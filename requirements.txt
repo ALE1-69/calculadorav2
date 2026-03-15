@@ -2,3 +2,4 @@ streamlit
 psychrolib
 plotly
 numpy
+pandas
