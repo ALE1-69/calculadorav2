@@ -49,7 +49,7 @@ col1.metric("Bulbo úmido",f"{Twb:.2f} °C")
 
 col2.metric("Ponto de orvalho",f"{Tdp:.2f} °C")
 
-col3.metric("Razão de umidade",f"{W:.5f} kg/kg")
+col3.metric("Razão de mistura",f"{W:.5f} kg/kg")
 
 col4.metric("Entalpia",f"{h/1000:.2f} kJ/kg")
 
