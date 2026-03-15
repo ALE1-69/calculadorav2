@@ -1,32 +1,18 @@
 import streamlit as st
 import math
+import plotly.graph_objects as go
+import numpy as np
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(
-    page_title="Ambiência Wilhelm Pro",
-    page_icon="🌡️",
-    layout="wide"
-)
+st.set_page_config(page_title="Ambiência Wilhelm Pro", page_icon="🌡️", layout="wide")
 
-# --- CSS PARA ESTILIZAÇÃO ---
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA ---
 st.markdown("""
     <style>
-    .main {
-        background-color: #f5f7f9;
-    }
-    .stMetric {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .result-card {
-        background-color: #e1f5fe;
-        padding: 20px;
-        border-radius: 15px;
-        border-left: 5px solid #0288d1;
-        margin-bottom: 20px;
-    }
+    .main { background-color: #f8f9fa; }
+    .stMetric { border: 1px solid #e0e0e0; padding: 15px; border-radius: 12px; background-color: white; }
+    .status-container { padding: 20px; border-radius: 15px; margin-bottom: 25px; color: white; text-align: center; }
+    .footer { text-align: center; color: #666; font-size: 0.8em; margin-top: 50px; border-top: 1px solid #ddd; padding-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -61,115 +47,98 @@ def encontrar_tbu_secante(t_bs, w_alvo, p, tdp_inicial):
         if abs(f_x1 - f_x0) < 1e-9: break
         x2 = x1 - f_x1 * (x1 - x0) / (f_x1 - f_x0)
         x0, x1 = x1, x2
-        if abs(x1 - x0) < 0.001: return x1
+        if abs(x1 - x0) < 0.01: return x1
     return x1
 
-# --- CABEÇALHO ---
-col_logo, col_titulo = st.columns([1, 4])
-with col_titulo:
-    st.title("🌡️ Calculadora de Ambiência Animal")
-    st.caption("Universidade Federal de Lavras | Eng. Agrícola | GEA117")
+# --- INTERFACE ---
+st.title("📊 Calculadora de Ambiência Animal")
+st.markdown("---")
 
-# --- ABAS ---
-tab_calc, tab_info = st.tabs(["🚀 Calculadora", "📚 Sobre o Modelo"])
+# --- SIDEBAR ---
+st.sidebar.header("🛠️ Configurações")
+altitude = st.sidebar.number_input("Altitude (m)", value=918, step=1)
+p_atm = 101.325 * (1 - 2.25577e-5 * altitude)**5.25588
+st.sidebar.info(f"Pressão Atmosférica: {p_atm:.2f} kPa")
+especie = st.sidebar.selectbox("Espécie Alvo", ["Bovino Leiteiro", "Aves", "Suínos"])
 
-with tab_calc:
-    # --- CONFIGURAÇÕES NA SIDEBAR ---
-    st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2921/2921944.png", width=100)
-    st.sidebar.title("Configurações Técnicas")
-    altitude = st.sidebar.number_input("Altitude Local (m)", value=918, help="Padrão Lavras: 918m")
-    p_atm = 101.325 * (1 - 2.25577e-5 * altitude)**5.25588
-    st.sidebar.info(f"Pressão Atmosférica: **{p_atm:.2f} kPa**")
-    
-    st.sidebar.divider()
-    especie = st.sidebar.selectbox("Espécie Alvo", ["Bovino Leiteiro", "Aves", "Suínos"])
-
-    # --- INPUTS PRINCIPAIS ---
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Entradas Térmicas")
+# --- ÁREA DE ENTRADA ---
+with st.container():
+    col_input1, col_input2 = st.columns(2)
+    with col_input1:
         metodo = st.selectbox("Método de Entrada", ["TBS e UR%", "TBS e TBU", "TBS e TPO"])
         tbs = st.number_input("Temp. Bulbo Seco (°C)", value=28.0, step=0.1)
-    
-    with c2:
-        st.subheader("Variável Secundária")
+    with col_input2:
         if metodo == "TBS e UR%":
-            dado2 = st.slider("Umidade Relativa (%)", 0.0, 100.0, 55.0)
+            dado2 = st.slider("Umidade Relativa (%)", 0.0, 100.0, 60.0)
         elif metodo == "TBS e TBU":
-            dado2 = st.number_input("Temp. Bulbo Úmido (°C)", value=20.0, step=0.1)
+            dado2 = st.number_input("Temp. Bulbo Úmido (°C)", value=21.0, step=0.1)
         else:
-            dado2 = st.number_input("Temp. Ponto de Orvalho (°C)", value=15.0, step=0.1)
+            dado2 = st.number_input("Temp. Ponto de Orvalho (°C)", value=18.0, step=0.1)
 
-    st.divider()
+# --- CÁLCULOS ---
+if st.button("CALCULAR PROPRIEDADES", use_container_width=True):
+    try:
+        # Lógica de cálculo conforme Wilhelm (1976)
+        if metodo == "TBS e UR%":
+            phi = dado2 / 100.0
+            pws = calcular_pws(tbs)
+            pw = phi * pws
+            w = 0.62198 * pw / (p_atm - pw)
+            tdp = calcular_tdp_regressao(pw)
+            tbu = encontrar_tbu_secante(tbs, w, p_atm, tdp)
+        elif metodo == "TBS e TBU":
+            tbu = dado2
+            w = calcular_w_equacao_16(tbs, tbu, p_atm)
+            pw = (p_atm * w) / (0.62198 + w)
+            phi = (pw / calcular_pws(tbs)) * 100
+            tdp = calcular_tdp_regressao(pw)
+        else:
+            tdp = dado2
+            pw = calcular_pws(tdp)
+            phi = (pw / calcular_pws(tbs)) * 100
+            w = 0.62198 * pw / (p_atm - pw)
+            tbu = encontrar_tbu_secante(tbs, w, p_atm, tdp)
 
-    # --- CÁLCULOS E RESULTADOS ---
-    if st.button("🚀 PROCESSAR DADOS PSICROMÉTRICOS", use_container_width=True):
-        try:
-            if metodo == "TBS e UR%":
-                phi = dado2 / 100.0
-                pws = calcular_pws(tbs)
-                pw = phi * pws
-                w = 0.62198 * pw / (p_atm - pw)
-                tdp = calcular_tdp_regressao(pw)
-                tbu = encontrar_tbu_secante(tbs, w, p_atm, tdp)
-            elif metodo == "TBS e TBU":
-                tbu = dado2
-                w = calcular_w_equacao_16(tbs, tbu, p_atm)
-                pw = (p_atm * w) / (0.62198 + w)
-                phi = (pw / calcular_pws(tbs)) * 100
-                tdp = calcular_tdp_regressao(pw)
-            else:
-                tdp = dado2
-                pw = calcular_pws(tdp)
-                phi = (pw / calcular_pws(tbs)) * 100
-                w = 0.62198 * pw / (p_atm - pw)
-                tbu = encontrar_tbu_secante(tbs, w, p_atm, tdp)
+        itu = (tbs + 273.15) + 0.36 * (tdp + 273.15) - 330.08
+        h = 1.006 * tbs + w * (2501 + 1.775 * tbs)
 
-            h = 1.006 * tbs + w * (2501 + 1.775 * tbs)
-            v = 0.28705 * (tbs + 273.15) * (1 + 1.6078 * w) / p_atm
-            itu = (tbs + 273.15) + 0.36 * (tdp + 273.15) - 330.08
+        # Lógica de Status (Cores)
+        if especie == "Bovino Leiteiro":
+            limit_c, limit_a = 72, 79
+        else:
+            limit_c, limit_a = 74, 79
+            
+        if itu < limit_c: color, status = "#2e7d32", "CONFORTO"
+        elif itu < limit_a: color, status = "#f9a825", "ALERTA"
+        else: color, status = "#c62828", "PERIGO"
 
-            # Lógica de Status
-            if especie == "Bovino Leiteiro":
-                if itu < 72: color, status = "#2e7d32", "CONFORTO"
-                elif itu < 79: color, status = "#f9a825", "ALERTA (ESTRESSE LEVE)"
-                else: color, status = "#c62828", "PERIGO (ESTRESSE GRAVE)"
-            else:
-                if itu < 74: color, status = "#2e7d32", "CONFORTO"
-                elif itu < 79: color, status = "#f9a825", "ALERTA"
-                else: color, status = "#c62828", "PERIGO"
+        # --- EXIBIÇÃO ---
+        st.markdown(f"<div class='status-container' style='background-color: {color};'><h2>ITU: {itu:.2f} — {status}</h2></div>", unsafe_allow_html=True)
 
-            # --- EXIBIÇÃO DOS RESULTADOS ---
-            st.markdown(f"""
-                <div class='result-card' style='border-left-color: {color};'>
-                    <h2 style='color: {color}; margin: 0;'>ITU: {itu:.2f} — {status}</h2>
-                    <p style='color: #555;'>Espécie selecionada: {especie}</p>
-                </div>
-            """, unsafe_allow_html=True)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("🌡️ Bulbo Úmido", f"{tbu:.2f} °C")
+        m2.metric("💧 Umidade Relativa", f"{phi if metodo != 'TBS e UR%' else dado2:.1f} %")
+        m3.metric("🔥 Entalpia (h)", f"{h:.2f} kJ/kg")
+        m4.metric("🌫️ Ponto Orvalho", f"{tdp:.2f} °C")
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("🌡️ T. Bulbo Úmido", f"{tbu:.2f} °C")
-            m2.metric("💧 Umidade Relativa", f"{phi if metodo != 'TBS e UR%' else dado2:.1f} %")
-            m3.metric("🔥 Entalpia (h)", f"{h:.2f} kJ/kg")
-            m4.metric("🌫️ Ponto de Orvalho", f"{tdp:.2f} °C")
+        # --- GRÁFICO PSICROMÉTRICO DINÂMICO ---
+        st.subheader("📍 Ponto de Estado no Diagrama Psicrométrico")
+        
+        # Gerar curvas de UR constante para o fundo do gráfico
+        t_range = np.linspace(0, 45, 100)
+        fig = go.Figure()
+        
+        for p_rel in [20, 40, 60, 80, 100]:
+            w_line = [0.62198 * (p_rel/100 * calcular_pws(ti)) / (p_atm - (p_rel/100 * calcular_pws(ti))) for ti in t_range]
+            fig.add_trace(go.Scatter(x=t_range, y=w_line, mode='lines', line=dict(width=1, color='rgba(100,100,100,0.3)'), name=f"UR {p_rel}%", showlegend=False))
 
-            with st.expander("📝 Ver Detalhes Adicionais"):
-                st.write(f"**Volume Específico:** {v:.4f} m³/kg")
-                st.write(f"**Razão de Mistura (W):** {w:.5f} kg/kg")
-                st.write(f"**Pressão de Vapor (Pw):** {pw:.4f} kPa")
+        # Adicionar o ponto atual
+        fig.add_trace(go.Scatter(x=[tbs], y=[w], mode='markers+text', marker=dict(color='red', size=12), text=["PONTO ATUAL"], textposition="top center", name="Estado do Ar"))
 
-        except Exception as e:
-            st.error("Erro nos cálculos. Verifique se os valores são fisicamente possíveis para a altitude informada.")
+        fig.update_layout(xaxis_title="Temperatura Bulbo Seco (°C)", yaxis_title="Razão de Mistura (kg/kg)", height=450, template="simple_white")
+        st.plotly_chart(fig, use_container_width=True)
 
-with tab_info:
-    st.subheader("Fundamentação Teórica")
-    st.write("""
-    Esta calculadora utiliza as equações de **Wilhelm (1976)**, publicadas na ASAE, que definem as propriedades psicrométricas 
-    em unidades do Sistema Internacional (SI). 
-    
-    A grande vantagem deste modelo é a precisão nas equações de regressão para pressão de saturação e a utilização de um nível 
-    de referência de 0 °C para o cálculo da entalpia.
-    """)
-    st.info("Referência: Wilhelm, L. R. (1976). Numerical Calculation of Psychrometric Properties in SI Units. ASAE.")
+    except Exception as e:
+        st.error(f"Erro no processamento: {e}")
 
-st.plotly_chart(fig,use_container_width=True)
+st.markdown(f"<div class='footer'>Baseado em Wilhelm (1976) | Desenvolvido por Alexandre Klein - UFLA</div>", unsafe_allow_html=True)
