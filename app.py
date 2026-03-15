@@ -6,41 +6,44 @@ import numpy as np
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Ambiência Wilhelm Pro", page_icon="🌡️", layout="wide")
 
-# --- ESTILIZAÇÃO CSS (CORREÇÃO DE CORES) ---
+# --- CSS PARA FORÇAR TEMA CLARO E LEGÍVEL ---
 st.markdown("""
     <style>
-    /* Força cor escura em textos globais e inputs */
-    html, body, [class*="st-"] {
-        color: #1c1e21;
+    /* Força o fundo da página como branco */
+    .stApp {
+        background-color: #FFFFFF;
     }
-    .stMetric {
-        border: 1px solid #d1d5db;
-        padding: 15px;
-        border-radius: 12px;
-        background-color: #ffffff !important;
+    /* Força todos os textos principais para cinza escuro/preto */
+    h1, h2, h3, p, span, label {
+        color: #1F2937 !important;
     }
-    /* Garante que o texto da métrica seja legível */
+    /* Estilização das métricas (caixas de resultado) */
+    [data-testid="stMetric"] {
+        background-color: #F9FAFB !important;
+        border: 1px solid #E5E7EB !important;
+        padding: 15px !important;
+        border-radius: 10px !important;
+    }
     [data-testid="stMetricValue"] {
         color: #0288d1 !important;
     }
-    [data-testid="stMetricLabel"] {
-        color: #374151 !important;
+    /* Ajuste das caixas de entrada (Inputs) */
+    .stTextInput>div>div>input, .stNumberInput>div>div>input {
+        color: #1F2937 !important;
+        background-color: #FFFFFF !important;
     }
-    .status-container {
+    /* Container de Status (ITU) */
+    .status-box {
         padding: 20px;
-        border-radius: 15px;
-        margin-bottom: 25px;
-        color: white !important;
+        border-radius: 12px;
         text-align: center;
+        margin-bottom: 20px;
+        border: 1px solid rgba(0,0,0,0.1);
+    }
+    .status-text {
+        color: #FFFFFF !important; /* Texto do ITU sempre branco para contrastar com a cor do box */
         font-weight: bold;
-    }
-    .footer {
-        text-align: center;
-        color: #6b7280;
-        font-size: 0.85em;
-        margin-top: 50px;
-        padding: 20px;
-        border-top: 1px solid #e5e7eb;
+        margin: 0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -79,30 +82,30 @@ def encontrar_tbu_secante(t_bs, w_alvo, p, tdp_inicial):
         if abs(x1 - x0) < 0.01: return x1
     return x1
 
-# --- INTERFACE ---
+# --- CONTEÚDO PRINCIPAL ---
 st.title("🌡️ Ambiência Animal - Wilhelm (1976)")
-st.caption(f"**Alexandre Klein** | Engenharia Agrícola - UFLA")
-st.markdown("---")
+st.markdown(f"**Alexandre Klein** | Engenharia Agrícola - UFLA")
+st.divider()
 
 # --- SIDEBAR ---
-st.sidebar.header("🛠️ Configurações")
-altitude = st.sidebar.number_input("Altitude (m)", value=918, step=1)
+st.sidebar.header("⚙️ Configurações")
+altitude = st.sidebar.number_input("Altitude (m)", value=918)
 p_atm = 101.325 * (1 - 2.25577e-5 * altitude)**5.25588
-st.sidebar.info(f"Pressão Atmosférica: {p_atm:.2f} kPa")
-especie = st.sidebar.selectbox("Espécie Alvo", ["Bovino Leiteiro", "Aves", "Suínos"])
+st.sidebar.info(f"Pressão: {p_atm:.2f} kPa")
+especie = st.sidebar.selectbox("Espécie", ["Bovino Leiteiro", "Aves", "Suínos"])
 
-# --- ÁREA DE ENTRADA ---
-col_input1, col_input2 = st.columns(2)
-with col_input1:
+# --- ENTRADAS ---
+c_in1, c_in2 = st.columns(2)
+with c_in1:
     metodo = st.selectbox("Método de Entrada", ["TBS e UR%", "TBS e TBU", "TBS e TPO"])
-    tbs = st.number_input("Temp. Bulbo Seco (°C)", value=28.0, step=0.1)
-with col_input2:
+    tbs = st.number_input("Temp. Bulbo Seco (°C)", value=28.0)
+with c_in2:
     if metodo == "TBS e UR%":
         dado2 = st.slider("Umidade Relativa (%)", 0.0, 100.0, 60.0)
     elif metodo == "TBS e TBU":
-        dado2 = st.number_input("Temp. Bulbo Úmido (°C)", value=21.0, step=0.1)
+        dado2 = st.number_input("Temp. Bulbo Úmido (°C)", value=21.0)
     else:
-        dado2 = st.number_input("Temp. Ponto de Orvalho (°C)", value=18.0, step=0.1)
+        dado2 = st.number_input("Temp. Ponto de Orvalho (°C)", value=18.0)
 
 # --- CÁLCULOS ---
 if st.button("CALCULAR PROPRIEDADES", use_container_width=True):
@@ -127,63 +130,56 @@ if st.button("CALCULAR PROPRIEDADES", use_container_width=True):
             w = 0.62198 * pw / (p_atm - pw)
             tbu = encontrar_tbu_secante(tbs, w, p_atm, tdp)
 
-        itu = tbs + 0.36 * tdp + 41.404 # Simplificação da fórmula do usuário
+        itu = tbs + 0.36 * tdp + 41.404
         h = 1.006 * tbs + w * (2501 + 1.775 * tbs)
 
         limit_c = 72 if especie == "Bovino Leiteiro" else 74
-        limit_a = 79
-            
-        if itu < limit_c: color, status = "#2e7d32", "CONFORTO"
-        elif itu < limit_a: color, status = "#f9a825", "ALERTA"
-        else: color, status = "#c62828", "PERIGO"
+        color = "#2e7d32" if itu < limit_c else "#f9a825" if itu < 79 else "#c62828"
+        status = "CONFORTO" if itu < limit_c else "ALERTA" if itu < 79 else "PERIGO"
 
-        st.markdown(f"<div class='status-container' style='background-color: {color};'><h2>ITU: {itu:.2f} — {status}</h2></div>", unsafe_allow_html=True)
+        # Box de Status
+        st.markdown(f"""
+            <div class='status-box' style='background-color: {color};'>
+                <h2 class='status-text'>ITU: {itu:.2f} — {status}</h2>
+            </div>
+        """, unsafe_allow_html=True)
 
+        # Métricas
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("🌡️ Bulbo Úmido", f"{tbu:.2f} °C")
-        m2.metric("💧 Umid. Relativa", f"{phi if metodo != 'TBS e UR%' else dado2:.1f} %")
+        m2.metric("💧 Umid. Relativa", f"{phi if metodo != 'TBS e UR%' else dado2:.1f}%")
         m3.metric("🔥 Entalpia (h)", f"{h:.2f} kJ/kg")
         m4.metric("🌫️ Ponto Orvalho", f"{tdp:.2f} °C")
 
-        # --- GRÁFICO PSICROMÉTRICO COM ZONA DE CONFORTO ---
-        st.subheader("📍 Análise Gráfica e Zona de Conforto")
+        # --- GRÁFICO ---
+        st.subheader("📍 Análise de Conforto Térmico")
         t_range = np.linspace(10, 45, 100)
         fig = go.Figure()
 
-        # 1. Curva de Saturação (UR 100%)
+        # Curva de Saturação
         w_sat = [0.62198 * calcular_pws(ti) / (p_atm - calcular_pws(ti)) for ti in t_range]
-        fig.add_trace(go.Scatter(x=t_range, y=w_sat, mode='lines', line=dict(color='black', width=2), name="Saturação"))
+        fig.add_trace(go.Scatter(x=t_range, y=w_sat, mode='lines', line=dict(color='#1F2937', width=2), name="Saturação"))
 
-        # 2. Sombreamento da Zona de Conforto (ITU < limit_c)
-        # Tdp = (ITU - Tbs - 41.404) / 0.36
-        w_conforto = []
-        t_conforto = np.linspace(10, limit_c - 41.404, 50) # Tbs não pode ser maior que o limite
-        for ti in t_conforto:
-            tdp_limit = (limit_c - ti - 41.404) / 0.36
-            if tdp_limit > ti: tdp_limit = ti # Tdp não pode ser > Tbs
-            pw_limit = calcular_pws(tdp_limit)
-            w_limit = 0.62198 * pw_limit / (p_atm - pw_limit)
-            w_conforto.append(w_limit)
+        # Zona de Conforto Sombreada
+        t_conf = np.linspace(10, limit_c - 41.404, 50)
+        w_conf = []
+        for ti in t_conf:
+            tdp_l = (limit_c - ti - 41.404) / 0.36
+            if tdp_l > ti: tdp_l = ti
+            w_conf.append(0.62198 * calcular_pws(tdp_l) / (p_atm - calcular_pws(tdp_l)))
 
-        fig.add_trace(go.Scatter(
-            x=list(t_conforto) + [t_conforto[0]], 
-            y=list(w_conforto) + [0], 
-            fill='toself', fillcolor='rgba(46, 125, 50, 0.2)', 
-            line=dict(color='rgba(255,255,255,0)'), name="Zona de Conforto"
-        ))
+        fig.add_trace(go.Scatter(x=list(t_conf) + [t_conf[0]], y=list(w_conf) + [0], 
+                                 fill='toself', fillcolor='rgba(46, 125, 50, 0.2)', 
+                                 line=dict(color='rgba(255,255,255,0)'), name="Zona de Conforto"))
 
-        # 3. Ponto Atual
-        fig.add_trace(go.Scatter(x=[tbs], y=[w], mode='markers', marker=dict(color='red', size=15, symbol='x'), name="Estado Atual"))
+        # Ponto Atual
+        fig.add_trace(go.Scatter(x=[tbs], y=[w], mode='markers', marker=dict(color='#EF4444', size=15, symbol='x'), name="Estado Atual"))
 
-        fig.update_layout(
-            xaxis=dict(title="Temperatura Bulbo Seco (°C)", range=[10, 45]),
-            yaxis=dict(title="Razão de Mistura (kg/kg)", range=[0, 0.035]),
-            height=500, margin=dict(l=20, r=20, t=20, b=20),
-            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
-        )
+        fig.update_layout(template="simple_white", xaxis_title="Bulbo Seco (°C)", yaxis_title="W (kg/kg)", height=500)
         st.plotly_chart(fig, use_container_width=True)
 
-    except Exception as e:
-        st.error(f"Verifique os dados. TBU/TPO não podem ser maiores que a TBS.")
+    except Exception:
+        st.error("Erro nos dados. Verifique os valores inseridos.")
 
+st.markdown("<div style='text-align: center; color: #9CA3AF; padding: 20px;'>GEA117 - Engenharia Agrícola - UFLA</div>", unsafe_allow_html=True)
 st.markdown(f"<div class='footer'>Baseado em Wilhelm (1976) | Desenvolvido para a disciplina de Construções e Ambiência - UFLA</div>", unsafe_allow_html=True)
